@@ -1,0 +1,100 @@
+```python
+import os
+import json
+from flask import Flask, render_template, request, redirect, url_for
+from googletrans import Translator
+from gtts import gTTS
+import speech_recognition as sr
+import pyttsx3
+import sqlite3
+from langdetect import detect
+
+app = Flask(__name__)
+translator = Translator()
+
+# Initialize text-to-speech engine
+tts_engine = pyttsx3.init()
+
+# Database setup
+def init_db():
+    with sqlite3.connect('translations.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS History
+                          (id INTEGER PRIMARY KEY, source TEXT, target TEXT, text TEXT, translated TEXT)''')
+    conn.close()
+
+# Speech recognition setup
+def recognize_speech_from_mic():
+    recognizer = sr.Recognizer()
+    microphone = sr.Microphone()
+    with microphone as source:
+        recognizer.adjust_for_ambient_noise(source)
+        audio = recognizer.listen(source)
+    try:
+        response = recognizer.recognize_google(audio)
+    except sr.UnknownValueError:
+        response = ""
+    return response
+
+# Supported languages
+LANGUAGES = {
+    'en': 'English',
+    'tr': 'Turkish',
+    'es': 'Spanish',
+    'fr': 'French',
+    'de': 'German',
+    'it': 'Italian',
+    'zh-cn': 'Chinese',
+    'ja': 'Japanese',
+    'ru': 'Russian',
+    'ko': 'Korean'
+}
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        source_lang = request.form.get('source_lang')
+        target_lang = request.form.get('target_lang')
+        input_text = request.form.get('input_text')
+
+        if not source_lang:
+            source_lang = detect(input_text)
+
+        translated_text = translator.translate(input_text, src=source_lang, dest=target_lang).text
+
+        with sqlite3.connect('translations.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute('INSERT INTO History (source, target, text, translated) VALUES (?, ?, ?, ?)',
+                           (LANGUAGES.get(source_lang, source_lang), LANGUAGES.get(target_lang, target_lang), input_text, translated_text))
+            conn.commit()
+        conn.close()
+
+        return render_template('index.html', source_lang=source_lang, target_lang=target_lang, input_text=input_text, translated_text=translated_text, languages=LANGUAGES)
+
+    return render_template('index.html', languages=LANGUAGES)
+
+@app.route('/history')
+def history():
+    with sqlite3.connect('translations.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM History')
+        translation_history = cursor.fetchall()
+    conn.close()
+    return render_template('history.html', history=translation_history)
+
+@app.route('/tts', methods=['GET'])
+def tts():
+    text = request.args.get('text')
+    speech = gTTS(text=text, lang='en', slow=False)
+    speech.save('output.mp3')
+    return '', 204
+
+@app.route('/speech_input', methods=['GET'])
+def speech_input():
+    recognized_text = recognize_speech_from_mic()
+    return render_template('index.html', input_text=recognized_text, languages=LANGUAGES)
+
+if __name__ == '__main__':
+    init_db()
+    app.run(debug=True)
+```
