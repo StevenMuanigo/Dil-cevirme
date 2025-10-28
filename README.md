@@ -12,3 +12,8 @@
  Çeviri Geçmişi	SQLite veritabanında tüm çeviriler saklanır
  
  Web Arayüzü	Flask ile HTML tabanlı sade kullanıcı arayüzü
+
+## KURULUM
+```bash
+pip install -r requirements.txt
+python app.py
